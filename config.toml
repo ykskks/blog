@@ -1,3 +1,8 @@
-baseURL = "http://example.org/"
-languageCode = "en-us"
-title = "My New Hugo Site"
+baseURL = "https://ykskks.github.io"
+languageCode = "ja"
+title = "ykskks.log"
+contentDir = "post"
+disableKinds = ["RSS", "sitemap"]
+
+[taxonomies]
+tag = "tags"
