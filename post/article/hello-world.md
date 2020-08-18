@@ -1,9 +1,11 @@
 ---
 title: "Hello World"
-date: 2020-05-07T11:39:39+09:00
-tags: ["hello", "world"]
+date: 2020-08-18
+tags: []
 
 ---
 
-Hello World!
+勉強したこととか、エラー解決とかその他もろもろを記録していくためのブログです。
+
+
 
