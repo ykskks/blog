@@ -3,6 +3,7 @@ languageCode = "ja"
 title = "ykskks.log"
 contentDir = "post"
 disableKinds = ["RSS", "sitemap"]
+theme = "hugo-notepadium"
 
 [taxonomies]
 tag = "tags"
