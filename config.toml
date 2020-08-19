@@ -13,3 +13,15 @@ tag = "tags"
 use = "hljs"  # 1. prismjs 2. hljs 3. none
 theme = "Dracula"
 darkTheme = "xcode-dark"  # apply this theme in dark mode
+
+[params.math]
+enable = true  # optional: true, false. Enable globally, default: false. You can always enable math on per page.
+use = "katex"  # option: "katex", "mathjax". default: "katex"
+
+[params.nav]
+showCategories = true       # /categories/
+showTags = true             # /tags/
+
+[[params.nav.custom]]
+title = "About"
+url = "/about"
