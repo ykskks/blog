@@ -1,5 +1,6 @@
 baseURL = "https://ykskks.github.io"
 languageCode = "ja"
+hasCJKLanguage = true
 title = "ykskks.log"
 contentDir = "post"
 disableKinds = ["RSS", "sitemap"]
@@ -7,3 +8,8 @@ theme = "hugo-notepadium"
 
 [taxonomies]
 tag = "tags"
+
+[params.syntax]
+use = "hljs"  # 1. prismjs 2. hljs 3. none
+theme = "Dracula"
+darkTheme = "xcode-dark"  # apply this theme in dark mode
