@@ -58,7 +58,7 @@ class SNE:
         p = torch.zeros(self.N)
         for i in range(self.N):
             p[i] = similarities[i] / similarities.sum()
-        shannon = - (p[p != 0] * torch.log2(p[p != 0])).sum()  #ゼロがlogとるとnanになるので省く
+        shannon = - (p[p != 0] * torch.log2(p[p != 0])).sum()  # log0=nan回避
         perp = 2 ** shannon.item()
         return perp
 
@@ -115,7 +115,7 @@ class SNE:
             y_similarities = self._compute_similarity(y, torch.ones(self.N) / (2 ** (1/2)))
             q = self._compute_cond_prob(y_similarities)
 
-            kl_loss = (p[p != 0] * (p[p != 0] / q[p != 0]).log()).sum()  # 対角成分のゼロがlogとるとnanになる
+            kl_loss = (p[p != 0] * (p[p != 0] / q[p != 0]).log()).sum()  # log0=nan回避
             kl_loss.backward()
             loss_history.append(kl_loss.item())
             optimizer.step()
