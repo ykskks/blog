@@ -12,7 +12,8 @@ tags: ["機械学習", "Python", "PyTorch"]
 
 今回使ったコードは[Github](https://github.com/ykskks/tsne-in-pytorch)にあげています。
 
-**注意!!**: 実行速度は**劇遅**で実用的ではありません。何かアイデアのある方はぜひ教えてください。
+t-SNE自体の解説記事ではありません。そのためt-SNEを既にある程度理解しているものと想定しています。
+
 
 ## SNE
 t-SNEには前身であるSNEなる手法が存在し、t-SNEはSNEの弱点を補った手法です。そこでまずはSNEを実装します。
@@ -20,25 +21,25 @@ t-SNEには前身であるSNEなる手法が存在し、t-SNEはSNEの弱点を�
 詳細は論文を参考して頂きたいのですが、大まかな流れは以下の通り。
 
 - 入力データ$$X$$(N x d行列)
-- 指定するパラメータは主にn_componentsとperplexity。前者は圧縮したい次元数で後者は後ほど説明。
+- 指定するパラメータは主に`n_components`と`perplexity`。前者は圧縮したい次元数で後者は後ほど説明。
 - 出力は低次元に圧縮されたデータ$$y$$(N x n_components行列)
 
 
 1. $$y$$をランダムに初期化
 2. 高次元空間の各データポイントに対応する正規分布の分散を指定されたperplexityから求める。
-3. 高次元空間における各データポイント間の類似性を求める。
+3. 高次元空間における各データポイント間の類似度を求める。
 4. 収束するまで以下を繰り返し
 
-    - 低次元空間における各データポイント間の類似性を求める。
-    - 高次元空間と低次元空間における類似性が近づく方向へ$$y$$を更新
+    - 低次元空間における各データポイント間の類似度を求める。
+    - 高次元空間と低次元空間における類似度の分布が近づく方向へ$$y$$を更新
 
 ***
 
-`perplexity`ですが、高次元における各データポイントの類似性($$p_{j|i}$$を自分以外の全ての$$j$$について求めたもの)のシャノンエントロピーとして定義されています。
+`perplexity`ですが、高次元における各データポイントの類似度($$p_{j|i}$$を自分以外の全ての$$j$$について求めたもの)のシャノンエントロピーとして定義されています。
 
-つまりは、SNEは高次元の類似性を低次元でも保つように低次元表現を学習しますが、その高次元の類似性を算出する際に各データポイントの近傍をどれくらいまで考慮するのか、ということを調節していると考えられます。
+つまりは、SNEは高次元の類似度を低次元でも保つように低次元表現を学習しますが、その高次元の類似度を算出する際に各データポイントの**近傍をどれくらいまで考慮するのか**、ということを調節していると考えられます。
 
-極端に考えれば、`perplexity`をめちゃくちゃ小さくすると各データポイントの類似性のエントロピーが小さいことを意味するので、対応する正規分布の分散は小さいものに設定している、つまり本当に近傍にあるデータポイントのみを考慮して類似性を算出していると考えられます。
+極端に考えれば、`perplexity`をめちゃくちゃ小さくすると各データポイントの類似度のエントロピーが小さいことを意味するので、対応する正規分布の分散は小さいものに設定している、つまり本当に近傍にあるデータポイントのみを考慮して類似度を算出していると考えられます。
 
 詳しくは論文を参照ください。
 
@@ -50,6 +51,8 @@ t-SNEには前身であるSNEなる手法が存在し、t-SNEはSNEの弱点を�
 - 論文では、正規分布の分散を二部探索で求めているとの記述がありましたが、以下の実装では単に範囲を決め打ちして最も指定のperplexityに近いものを選んでいます。
 
 - 引数のmodeは高次元での計算であるか、低次元での計算であるかのフラグです。SNEでは影響がないのですが、後ほどのt-SNEの実装のためにあえて残しています。
+
+- 正直あまり効率のいいコードではないかもしれません。何かあれば是非ご指摘ください。
 
 ```
 from itertools import product
@@ -76,12 +79,8 @@ class SNE:
         self.n_epochs = n_epochs
 
     def _compute_perplexity_from_sigma(self, data_matrix, center_idx, sigma):
-        similarities = torch.zeros(self.N)
-        for i in range(self.N):
-            similarities[i] = self._similarity(data_matrix[center_idx, :], data_matrix[i, :], sigma, "h")
-        p = torch.zeros(self.N)
-        for i in range(self.N):
-            p[i] = similarities[i] / similarities.sum()
+        similarities = self._similarity(data_matrix[center_idx, :], data_matrix, sigma, "h")
+        p = similarities / similarities.sum()
         shannon = - (p[p != 0] * torch.log2(p[p != 0])).sum()  #ゼロがlogとるとnanになるので省く
         perp = 2 ** shannon.item()
         return perp
@@ -101,21 +100,21 @@ class SNE:
 
     def _similarity(self, x1, x2, sigma, mode):
         # SNEでは高次元でも低次元でも正規分布を用いる
-        return torch.exp(- ((x1 - x2) ** 2).sum() / 2 * (sigma ** 2))
+        return torch.exp(- ((x1 - x2) ** 2).sum(dim=1) / 2 * (sigma ** 2))
 
     def _compute_similarity(self, data_matrix, sigmas, mode):
         similarities = torch.zeros((self.N, self.N))
-        for i, j in product(range(self.N), range(self.N)):
-            g_ji = self._similarity(data_matrix[i, :], data_matrix[j, :], sigmas[i], mode)
-            similarities[i][j] = g_ji
+        for i in range(self.N):
+            s_i = self._similarity(data_matrix[i, :], data_matrix, sigmas[i], mode)
+            similarities[i] = s_i
         return similarities
 
     def _compute_cond_prob(self, similarities, mode):
         # SNEではmodeにより類似性の計算変わらない
         cond_prob_matrix = torch.zeros((self.N, self.N))
-        for i, j in product(range(self.N), range(self.N)):
-            p_ji = similarities[i][j] / similarities[i].sum()
-            cond_prob_matrix[i][j] = p_ji
+        for i in range(self.N):
+            p_i = similarities[i] / similarities[i].sum()
+            cond_prob_matrix[i] = p_i
         return cond_prob_matrix
 
     def fit_transform(self, X):
@@ -140,7 +139,7 @@ class SNE:
             y_similarities = self._compute_similarity(y, torch.ones(self.N) / (2 ** (1/2)), "l")
             q = self._compute_cond_prob(y_similarities, "l")
 
-            kl_loss = (p[p != 0] * (p[p != 0] / q[p != 0]).log()).sum()  # 対角成分のゼロがlogとるとnanになる
+            kl_loss = (p[p != 0] * (p[p != 0] / q[p != 0]).log()).mean()  # 対角成分のゼロがlogとるとnanになる
             kl_loss.backward()
             loss_history.append(kl_loss.item())
             optimizer.step()
@@ -148,7 +147,6 @@ class SNE:
         plt.plot(loss_history)
         plt.xlabel("epoch")
         plt.ylabel("loss")
-        plt.show()
         return y.detach().numpy()
 ```
 
@@ -157,9 +155,9 @@ digitsデータを使ってPCAとSNEによる二次元への次元圧縮の様�
 
 ```
 digits = load_digits()
-X, y = digits.data[:100, :], digits.target[:100]
+X, y = digits.data[:200, :], digits.target[:200]
 print(X.shape, y.shape)
->> (100, 64) (1797,)
+>> (200, 64) (200,)
 ```
 計算が重いのでサンプリングしてます。
 
@@ -168,7 +166,7 @@ print(X.shape, y.shape)
 sc = StandardScaler()
 X_sc = sc.fit_transform(X)
 
-pca = PCA(n_components=2, random_state=42)
+pca = PCA(n_components=2)
 X_pca = pca.fit_transform(X_sc)
 
 def plot_result(x_transformed, y, title):
@@ -185,12 +183,12 @@ plot_result(X_pca, y, "PCA")
 
 ![](/article/img/digits_pca.png)
 
-3と5が大部分被ってしまっていたり、まとまりをうまく捉えられていないところが見受けられます。
+かなり重なりが多く、データの構造をうまく二次元へ落とし込めていないように見受けられます。
 
 次にSNEですが
 
 ```
-sne = SNE(n_components=2, perplexity=50, n_epochs=100, lr=1)
+sne = SNE(n_components=2, perplexity=50, n_epochs=200, lr=0.1)
 X_sne = sne.fit_transform(X_sc)
 
 plot_result(X_sne, y, "SNE")
@@ -198,7 +196,7 @@ plot_result(X_sne, y, "SNE")
 
 ![](/article/img/sne_loss.png)
 
-50イテレーションくらいで大体収束してるのがわかります。
+100イテレーションくらいで大体収束してるのがわかります。
 
 ![](/article/img/digits_sne.png)
 
@@ -209,8 +207,8 @@ plot_result(X_sne, y, "SNE")
 
 主な変更点は以下の二つです。（詳細は論文を参照願います）
 
-- symmetricな類似性の導入
-- 低次元空間の類似性の計算に正規分布ではなく、裾の重い自由度1のt分布を用いる
+- `symmetric`な類似度の導入
+- 低次元空間の類似度の計算に正規分布ではなく、裾の重い自由度1の`t分布`を用いる
 
 ***
 
@@ -218,21 +216,21 @@ plot_result(X_sne, y, "SNE")
 
 実際、上記の2点以外はSNEと基本的に同じなのでSNEクラスを継承します。
 
-t-SNEでは先ほども述べたように、低次元と高次元で類似性の算出方法が異なるのでその部分の変更を加えます。
+t-SNEでは先ほども述べたように、低次元と高次元で類似度の算出方法が異なるのでその部分の変更を加えます。
 
 ```
 class TSNE(SNE):
     def _similarity(self, x1, x2, sigma, mode):
         if mode == "h":
-            return torch.exp(- ((x1 - x2) ** 2).sum() / 2 * (sigma ** 2))
+            return torch.exp(- ((x1 - x2) ** 2).sum(dim=1) / 2 * (sigma ** 2))
         if mode == "l":
-            return (1 + ((x1 - x2) ** 2).sum()) ** (-1)
+            return (1 + ((x1 - x2) ** 2).sum(dim=1)) ** (-1)
 
     def _compute_cond_prob(self, similarities, mode):
         cond_prob_matrix = torch.zeros((self.N, self.N))
-        for i, j in product(range(self.N), range(self.N)):
-            p_ji = similarities[i][j] / similarities[i].sum()
-            cond_prob_matrix[i][j] = p_ji
+        for i in range(self.N):
+            p_i = similarities[i] / similarities[i].sum()
+            cond_prob_matrix[i] = p_i
 
         if mode == "h":
             cond_prob_matrix = (cond_prob_matrix + torch.t(cond_prob_matrix)) / 2
@@ -242,7 +240,7 @@ class TSNE(SNE):
 ### 結果
 
 ```
-tsne = TSNE(n_components=2, perplexity=50, n_epochs=200, lr=1)
+tsne = TSNE(n_components=2, perplexity=50, n_epochs=500, lr=0.1)
 X_tsne = tsne.fit_transform(X_sc)
 
 plot_result(X_tsne, y, "t-SNE")
@@ -254,8 +252,8 @@ plot_result(X_tsne, y, "t-SNE")
 
 どうでしょうか？
 
-正直各グループのまとまり具合はそんなに変わらないかなーという感じがしますが、
-グループ間の距離が少し空いていて、より見た目がすっきりした感があります。（SNEはごちゃごちゃ全体が固まっている感じ、論文でcrowding problemと呼ばれているもの？）
+主観ですが、各グループごとのまとまり・各グループ間の分離ともにかなりいい感じになり、
+より見た目がすっきりした感があります。（SNEはごちゃごちゃ全体が固まっている感じ、論文でcrowding problemと呼ばれているもの？）
 
 perplexityの値は割と敏感らしいのでもう少し調節しても良いと思いますが、とりあえずそれっぽい結果が出ているのでとりあえずここまでにしようと思います。
 
@@ -263,15 +261,12 @@ perplexityの値は割と敏感らしいのでもう少し調節しても良い�
 
 （ちなみに）
 
-2の中に他の2たちからかなり離れている奴らがいますが、見てみるとこんな感じでした。上の段の左から2番目と3番目です。確かに他に比べて癖があるようです。9に近いのも納得できそうです。
+青色で表されている2がうまくまとまってないのですが、これは今回のデータの中にかなり性質の違う2たちが混在していたことによるようです。（文字の傾きにかなりばらつきがある）
 
 ![](/article/img/2.png)
 
-![](/article/img/9.png)
-
-
 ## TODO
-- 高速化(高次元空間で遠いデータポイント間の類似性をゼロにしてしまうなど近似手法があるようです...)
+- 高速化(高次元空間で遠いデータポイント間の類似度をゼロにしてしまうなど近似手法があるようです...)
 
 多分また書きます。
 

@@ -2,7 +2,7 @@
 title: "PythonのPropertyの必要性を理解する"
 date: 2020-08-19
 tags: ["Python"]
-
+draft: true
 ---
 他人の書いたPythonコードを読んでいるとクラス内で`@property`などというものが使われているのをを見かけることがある。
 
