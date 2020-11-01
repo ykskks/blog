@@ -75,6 +75,77 @@ sudo apt-get install -y nvidia-docker2
 sudo systemctl restart docker
 ```
 
-## Dockerfileと環境の立ち上げ
+## Dockerfile
+rdkitは化合物をpythonで扱うライブラリですが、こちらのインストールがcondaが一番楽なので今回はcondaのベースイメージを使っています。
+```
+FROM continuumio/anaconda3:2020.02
 
-https://github.com/ykskks/MF-SE/blob/master/README.md
+# ライブラリの追加インストール
+RUN pip install -U pip && \
+    pip install fastprogress japanize-matplotlib && \
+    conda install -c conda-forge rdkit && \
+    conda install pytorch torchvision cudatoolkit=10.1 -c pytorch && \
+    pip install jupyter_contrib_nbextensions && \
+    pip install streamlit
+
+ARG UID
+ARG GID
+ARG UNAME
+
+ENV UID ${UID}
+ENV GID ${GID}
+ENV UNAME ${UNAME}
+
+RUN groupadd -g ${GID} ${UNAME}
+RUN useradd -u ${UID} -g ${UNAME} -m ${UNAME}
+```
+## docker-compose.yml
+runtimeをnvidiaに設定する
+```
+version: "2.3"
+services:
+  dev:
+    user: $UID:$GID
+    build:
+      context: .
+      args:
+        UID: $UID
+        GID: $GID
+        UNAME: $UNAME
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    volumes:
+      - ${PWD}:/working
+    working_dir: /working
+    ports:
+      - 8888:8888
+    command: jupyter notebook --ip=0.0.0.0 --allow-root --no-browser
+    tty: true
+```
+
+## 環境の立ち上げ
+コンテナ内ではデフォルトでrootユーザとなり、コンテナ内でファイル作成した際などにホストからアクセスできなくなるなどの権限周りのトラブルが発生するのでユーザをホストに合わせる。
+
+```
+#!/bin/sh
+
+touch .env
+echo "UID=$(id -u $USER)" >> .env
+echo "GID=$(id -g $USER)" >> .env
+echo "UNAME=$USER" >> .env
+```
+
+これを実行してから環境を立ち上げてコンテナ内に入る
+
+```
+chmod 755 ./setDotEnv.sh
+./setDotEnv.sh
+
+docker-compose up --build -d
+docker-compose exec dev bash
+```
+
+## 反省
+Docker使ってるのに結局環境を一元管理できておらず、かなりホスト側の環境に依存してるので、この辺もう少しうまくできる方法ないかなーという感じ...
